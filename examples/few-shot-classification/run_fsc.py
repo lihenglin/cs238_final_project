@@ -4,7 +4,8 @@ from omegaconf import DictConfig, OmegaConf
 
 from rlprompt.models import (LMAdaptorModelConfig, SinglePromptModelConfig,
                              make_lm_adaptor_model, make_single_prompt_model)
-from rlprompt.modules import SQLModuleConfig, make_sql_module, make_sac_module
+# from rlprompt.modules import SQLModuleConfig, make_sql_module
+from rlprompt.modules import SACModuleConfig, make_sac_module
 from rlprompt.trainers import TrainerConfig, make_trainer
 from rlprompt.utils.utils import (colorful_print, compose_hydra_config_store,
                                   get_hydra_output_dir)
@@ -16,9 +17,12 @@ from fsc_helpers import (PromptedClassificationRewardConfig,
 
 
 # Compose default config
+# config_list = [PromptedClassificationRewardConfig,
+#                 FewShotClassificationDatasetConfig, LMAdaptorModelConfig,
+#                 SinglePromptModelConfig, SQLModuleConfig, TrainerConfig]
 config_list = [PromptedClassificationRewardConfig,
                 FewShotClassificationDatasetConfig, LMAdaptorModelConfig,
-                SinglePromptModelConfig, SQLModuleConfig, TrainerConfig]
+                SinglePromptModelConfig, SACModuleConfig, TrainerConfig]
 cs = compose_hydra_config_store('base_fsc', config_list)
 
 

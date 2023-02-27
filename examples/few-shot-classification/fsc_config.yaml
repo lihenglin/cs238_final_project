@@ -13,7 +13,7 @@ task_lm: "roberta-large"
 prompt_length: 5
 prompt_train_batch_size: 16
 prompt_infer_batch_size: 1
-# SQL Module
+# SQL/ SAC Module
 reward_shaping_old_min: 0
 reward_shaping_old_max: 1
 reward_shaping_new_min: 0
