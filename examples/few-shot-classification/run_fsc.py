@@ -6,7 +6,8 @@ from rlprompt.models import (LMAdaptorModelConfig, SinglePromptModelConfig,
                              make_lm_adaptor_model, make_single_prompt_model)
 # from rlprompt.modules import SQLModuleConfig, make_sql_module
 from rlprompt.modules import SACModuleConfig, make_sac_module
-from rlprompt.trainers import TrainerConfig, make_trainer
+# from rlprompt.trainers import TrainerConfig, make_trainer
+from rlprompt.trainers import TrainerConfig, make_sac_trainer
 from rlprompt.utils.utils import (colorful_print, compose_hydra_config_store,
                                   get_hydra_output_dir)
 
@@ -54,7 +55,8 @@ def main(config: "DictConfig"):
     config.train_batch_size = len(train_dataset)
     config.eval_batch_size = len(val_dataset)
     config.save_dir = os.path.join(output_dir, config.save_dir)
-    trainer = make_trainer(algo_module, train_dataset, val_dataset, config)
+    # trainer = make_trainer(algo_module, train_dataset, val_dataset, config)
+    trainer = make_sac_trainer(algo_module, train_dataset, val_dataset, config)
     trainer.train(config=config)
 
 

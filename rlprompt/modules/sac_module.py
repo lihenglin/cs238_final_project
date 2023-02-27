@@ -48,7 +48,6 @@ class SACModule(BaseModule):
         else:
             self._target_critic = target_critic_model
         self._log_alpha = nn.Parameter(torch.zeros(1, device=next(self._actor.parameters()).device))
-        self._model = nn.ModuleList([self._actor, self._online_critic, self._log_alpha])
         self._target_entropy = -torch.log(torch.tensor(1.0 / 50257)) * target_entropy_ratio # 50257 is the vocabulary sizes of GPT2 family
         self._reward = reward
 
