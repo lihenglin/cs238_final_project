@@ -1,1 +1,2 @@
 from .sql_losses import sql_loss_with_sparse_rewards
+from .sac_losses import sac_loss_with_sparse_rewards

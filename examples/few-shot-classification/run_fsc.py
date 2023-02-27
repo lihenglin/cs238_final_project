@@ -4,7 +4,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from rlprompt.models import (LMAdaptorModelConfig, SinglePromptModelConfig,
                              make_lm_adaptor_model, make_single_prompt_model)
-from rlprompt.modules import SQLModuleConfig, make_sql_module
+from rlprompt.modules import SQLModuleConfig, make_sql_module, make_sac_module
 from rlprompt.trainers import TrainerConfig, make_trainer
 from rlprompt.utils.utils import (colorful_print, compose_hydra_config_store,
                                   get_hydra_output_dir)
@@ -35,11 +35,16 @@ def main(config: "DictConfig"):
     print('Val Size', len(val_dataset))
     print('Examples:', val_dataset[:5])
 
-    policy_model = make_lm_adaptor_model(config)
-    prompt_model = make_single_prompt_model(policy_model, config)
+    # policy_model = make_lm_adaptor_model(config)
+    actor_model = make_lm_adaptor_model(config)
+    critic_model = make_lm_adaptor_model(config)
+    # prompt_model = make_single_prompt_model(policy_model, config)
+    actor_prompt_model = make_single_prompt_model(actor_model, config)
+    critic_prompt_model = make_single_prompt_model(critic_model, config)
     reward = make_prompted_classification_reward(num_classes, verbalizers, 
                                                  template, config)
-    algo_module = make_sql_module(prompt_model, reward, config)
+    # algo_module = make_sql_module(prompt_model, reward, config)
+    algo_module = make_sac_module(actor_prompt_model, critic_prompt_model, reward, config)
 
     # Hack for few-shot classification - Each batch contains all examples
     config.train_batch_size = len(train_dataset)

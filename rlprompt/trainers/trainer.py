@@ -153,7 +153,7 @@ class Trainer:
 
         total_steps = 0
         for epoch in range(total_train_epochs):
-            for step, batch in enumerate(train_dataloader):
+            for step, batch in enumerate(train_dataloader): # batch: {'source_texts': (B, 1), 'class_labels': (B, 1)}
                 batch_log = self._train_step(step, batch)
                 if report_to_wandb:
                     wandb.log(batch_log)

@@ -9,30 +9,34 @@ from rlprompt.losses import loss_utils
 from rlprompt.utils import utils
 
 
-def sql_loss_with_sparse_rewards(
+def sac_loss_with_sparse_rewards(
         implementation: str,
         logits: torch.Tensor,
-        logits_: torch.Tensor,
+        logits_online_critic: torch.Tensor,
+        logits_target_critic: torch.Tensor,
         actions: torch.LongTensor,
         sampled_actions: Optional[torch.LongTensor],
         rewards: torch.Tensor,
         sequence_length: torch.LongTensor,
+        log_alpha: torch.Tensor,
+        target_entropy: torch.Tensor,
         coefficient: Optional[float] = None,
         margin_constant: Optional[float] = None,
         margin_coefficient: Optional[float] = None,
 ) -> Tuple[torch.Tensor, Dict[str, Any]]:
-    """Soft Q Learning Loss Functions with Sparse Rewards
+    """Soft Actor-Critic Loss Functions with Sparse Rewards
 
     Arguments:
         implementation: string, which loss function to use
-        logits:          [batch_size, sequence_length, vocab_size]
-        logits_:         [batch_size, sequence_length, vocab_size]
-        logits_pi:       [batch_size, sequence_length, vocab_size]
-        actions:         [batch_size, sequence_length]
-        rewards:         [batch_size]
-        sequence_length: [batch_size]
+        logits:                        [batch_size, sequence_length, vocab_size]
+        logits_online_critic:          [batch_size, sequence_length, vocab_size]
+        logits_target_critic:          [batch_size, sequence_length, vocab_size]
+        logits_pi:                     [batch_size, sequence_length, vocab_size]
+        actions:                       [batch_size, sequence_length]
+        rewards:                       [batch_size]
+        sequence_length:               [batch_size]
     """
-    if implementation not in ["v0", "v1", "v2", "v3", "v2_v2r", "v3_v3r", "v2_v2r_v3_v3r"]:
+    if implementation not in ["v1", "v2", "v3", "v2_v2r", "v3_v3r", "v2_v2r_v3_v3r"]:
         raise ValueError
 
     if not torch.is_tensor(rewards):
@@ -41,56 +45,68 @@ def sql_loss_with_sparse_rewards(
     if rewards.ndim != 1 or logits.shape[0] != rewards.shape[0]:
         raise ValueError
 
-    if implementation == "v0":
-        _sql_loss_func = soft_q_loss_with_sparse_rewards_0
-
     if implementation == "v1":
-        _sql_loss_func = soft_q_loss_with_sparse_rewards_1
+        _sac_critic_loss_func = sac_critic_loss_with_sparse_rewards_1
 
     if implementation == "v2":
-        _sql_loss_func = soft_q_loss_with_sparse_rewards_2
+        _sac_critic_loss_func = sac_critic_loss_with_sparse_rewards_2
 
     if implementation == "v3":
-        _sql_loss_func = soft_q_loss_with_sparse_rewards_3
+        _sac_critic_loss_func = sac_critic_loss_with_sparse_rewards_3
 
     if implementation == "v2_v2r":
-        _sql_loss_func = partial(
-            soft_q_loss_with_sparse_rewards_2_2_reversed,
+        _sac_critic_loss_func = partial(
+            sac_critic_loss_with_sparse_rewards_2_2_reversed,
             coefficient=coefficient,
             margin_constant=margin_constant,
             margin_coefficient=margin_coefficient)
 
     if implementation == "v3_v3r":
-        _sql_loss_func = partial(
-            soft_q_loss_with_sparse_rewards_3_3_reversed,
+        _sac_critic_loss_func = partial(
+            sac_critic_loss_with_sparse_rewards_3_3_reversed,
             coefficient=coefficient)
 
     if implementation == "v2_v2r_v3_v3r":
-        _sql_loss_func = partial(
-            soft_q_loss_with_sparse_rewards_2_2_reversed_3_3_reversed,
+        _sac_critic_loss_func = partial(
+            sac_critic_loss_with_sparse_rewards_2_2_reversed_3_3_reversed,
             coefficient=coefficient)
 
-    if logits.shape != logits_.shape:
+    if logits.shape != logits_online_critic.shape:
         raise ValueError(
             f"`logits.shape` = {logits.shape}, but "
-            f"`logits_.shape` = {logits_.shape}")
+            f"`logits_online_q.shape` = {logits_online_critic.shape}")
 
-    raw_losses, quantities_to_log = _sql_loss_func(
-        logits=logits,
-        logits_=logits_,
+    if logits.shape != logits_target_critic.shape:
+        raise ValueError(
+            f"`logits.shape` = {logits.shape}, but "
+            f"`logits_target_q.shape` = {logits_target_critic.shape}")
+
+    raw_critic_losses, quantities_to_log = _sac_critic_loss_func(
+        logits_online_q=logits_online_critic,
+        logits_target_q=logits_target_critic,
         actions=actions,
         rewards=rewards,
         sequence_length=sequence_length
     )
+    raw_policy_losses, entropy = sac_policy_loss(
+        logits=logits,
+        logits_online_critic=logits_online_critic,
+        alpha=log_alpha.exp()
+    )
+    raw_entropy_losses = sac_entropy_loss(
+        log_alpha,
+        entropy,
+        target_entropy
+    )
 
     loss = loss_utils.mask_and_reduce(
-        sequence=raw_losses,
+        sequence=raw_critic_losses + raw_policy_losses + raw_entropy_losses,
         sequence_length=sequence_length)
     loss_log = {
         "loss": loss,
         "sequence_length": sequence_length.float().mean(),
         "loss-normalized": loss_utils.mask_and_reduce(
-            sequence=raw_losses,
+            sequence=raw_critic_losses,
             sequence_length=sequence_length,
             average_across_timesteps=True,
             sum_over_timesteps=False),
@@ -106,21 +122,20 @@ def sql_loss_with_sparse_rewards(
 
     return loss, loss_log
 
-
-def soft_q_loss_with_sparse_rewards_1(
-        logits: torch.Tensor,
-        logits_: torch.Tensor,
+def sac_critic_loss_with_sparse_rewards_1(
+        logits_online_critic: torch.Tensor,
+        logits_target_critic: torch.Tensor,
         actions: torch.LongTensor,
         rewards: torch.Tensor,
         sequence_length: torch.LongTensor,
 ) -> Tuple[torch.Tensor, Dict[str, Any]]:
 
     Q = loss_utils.gather_2d_on_last_dim(
-        tensor=logits,
+        tensor=logits_online_critic,
         index=actions,
         shape=actions.shape)
     # use `V` from the target if available
-    V_ = logits_.logsumexp(dim=-1)
+    V_ = logits_target_critic.logsumexp(dim=-1)
 
     # Build the target `= V_t+1 + r`
     # where we assume the rewards to be sparse
@@ -134,7 +149,7 @@ def soft_q_loss_with_sparse_rewards_1(
     raw_losses = F.mse_loss(Q, Q_, reduction="none")
     quantities_to_log = {
         "Q": Q,
-        "V": logits.logsumexp(dim=-1),
+        "V": logits_online_critic.logsumexp(dim=-1),
         "Q_": Q_,
         "V_": V_,
     }
@@ -142,9 +157,9 @@ def soft_q_loss_with_sparse_rewards_1(
     return raw_losses, quantities_to_log
 
 
-def soft_q_loss_with_sparse_rewards_2(
-        logits: torch.Tensor,
-        logits_: torch.Tensor,
+def sac_critic_loss_with_sparse_rewards_2(
+        logits_online_critic: torch.Tensor,
+        logits_target_critic: torch.Tensor,
         actions: torch.LongTensor,
         rewards: torch.Tensor,
         sequence_length: torch.LongTensor,
@@ -152,19 +167,16 @@ def soft_q_loss_with_sparse_rewards_2(
 ) -> Tuple[torch.Tensor, Dict[str, Any]]:
 
     Q = loss_utils.gather_2d_on_last_dim(
-        tensor=logits,
+        tensor=logits_online_critic,
         index=actions,
         shape=actions.shape) # (B, L)
-    V = logits.logsumexp(dim=-1) # (B, L)
+    V = logits_online_critic.logsumexp(dim=-1) # (B, L)
     A = Q - V
-    # print(logits.shape)
-    # print(V)
-    # print(Q)
 
     # Target outputs
     Q_ = torch.zeros_like(Q)
     A_ = torch.zeros_like(Q)
-    V_ = logits_.logsumexp(dim=-1)
+    V_ = logits_target_critic.logsumexp(dim=-1)
     Q_[:, :-1] = V_[:, 1:]
     A_[:, :-1] = V_[:, 1:] - V_[:, :-1]
     # Terminal V-target is the last V-target before
@@ -172,10 +184,6 @@ def soft_q_loss_with_sparse_rewards_2(
     terminal_V_ = V_[
         torch.arange(sequence_length.shape[0]),
         sequence_length - 1]
-#     print(Q_)
-#     print(sequence_length)
-#     print(torch.arange(sequence_length.shape[0]))
-#     print(rewards)
     Q_[
         torch.arange(sequence_length.shape[0]),
         sequence_length - 1] = rewards
@@ -195,16 +203,16 @@ def soft_q_loss_with_sparse_rewards_2(
         "Q_": Q_,
         "V_": V_,
         "A_": A_,
-        "H": loss_utils._get_entropy(logits),
-        "H_": loss_utils._get_entropy(logits_),
+        "H": loss_utils._get_entropy(logits_online_critic),
+        "H_": loss_utils._get_entropy(logits_target_critic),
     }
 
     return raw_losses, quantities_to_log
 
 
-def soft_q_loss_with_sparse_rewards_3(
-        logits: torch.Tensor,
-        logits_: torch.Tensor,
+def sac_critic_loss_with_sparse_rewards_3(
+        logits_online_critic: torch.Tensor,
+        logits_target_critic: torch.Tensor,
         actions: torch.LongTensor,
         rewards: torch.Tensor,
         sequence_length: torch.LongTensor,
@@ -212,14 +220,14 @@ def soft_q_loss_with_sparse_rewards_3(
 ) -> Tuple[torch.Tensor, Dict[str, Any]]:
 
     Q = loss_utils.gather_2d_on_last_dim(
-        tensor=logits,
+        tensor=logits_online_critic,
         index=actions,
         shape=actions.shape)
-    V = logits.logsumexp(dim=-1)
+    V = logits_online_critic.logsumexp(dim=-1)
     A = Q - V
 
     # Target outputs
-    V_ = logits_.logsumexp(dim=-1)
+    V_ = logits_target_critic.logsumexp(dim=-1)
 
     A2 = loss_utils.masked_reverse_cumsum(
         A,
@@ -247,9 +255,9 @@ def soft_q_loss_with_sparse_rewards_3(
     return raw_losses, quantities_to_log
 
 
-def soft_q_loss_with_sparse_rewards_2_2_reversed(
-        logits: torch.Tensor,
-        logits_: torch.Tensor,
+def sac_critic_loss_with_sparse_rewards_2_2_reversed(
+        logits_online_critic: torch.Tensor,
+        logits_target_critic: torch.Tensor,
         actions: torch.LongTensor,
         rewards: torch.Tensor,
         sequence_length: torch.LongTensor,
@@ -258,9 +266,9 @@ def soft_q_loss_with_sparse_rewards_2_2_reversed(
         margin_coefficient: Optional[float] = None,
 ) -> Tuple[torch.Tensor, Dict[str, Any]]:
 
-    raw_losses_2, quantities_to_log_2 = soft_q_loss_with_sparse_rewards_2(
-        logits=logits,
-        logits_=logits_,
+    raw_losses_2, quantities_to_log_2 = sac_critic_loss_with_sparse_rewards_2(
+        logits=logits_online_critic,
+        logits_=logits_target_critic,
         actions=actions,
         rewards=rewards,
         sequence_length=sequence_length)
@@ -269,9 +277,9 @@ def soft_q_loss_with_sparse_rewards_2_2_reversed(
         quantities_to_log_2, prefix="0/")
 
     if coefficient is not None:
-        raw_losses_2_r, quantities_to_log_2_r = soft_q_loss_with_sparse_rewards_2(
-            logits=logits_,
-            logits_=logits,
+        raw_losses_2_r, quantities_to_log_2_r = sac_critic_loss_with_sparse_rewards_2(
+            logits=logits_target_critic,
+            logits_=logits_online_critic,
             actions=actions,
             rewards=rewards,
             sequence_length=sequence_length)
@@ -309,18 +317,18 @@ def soft_q_loss_with_sparse_rewards_2_2_reversed(
     return raw_losses, quantities_to_log
 
 
-def soft_q_loss_with_sparse_rewards_3_3_reversed(
-        logits: torch.Tensor,
-        logits_: torch.Tensor,
+def sac_critic_loss_with_sparse_rewards_3_3_reversed(
+        logits_online_critic: torch.Tensor,
+        logits_target_critic: torch.Tensor,
         actions: torch.LongTensor,
         rewards: torch.Tensor,
         sequence_length: torch.LongTensor,
         coefficient: Optional[float] = None,
 ) -> Tuple[torch.Tensor, Dict[str, Any]]:
 
-    raw_losses_3, quantities_to_log_3 = soft_q_loss_with_sparse_rewards_3(
-        logits=logits,
-        logits_=logits_,
+    raw_losses_3, quantities_to_log_3 = sac_critic_loss_with_sparse_rewards_3(
+        logits=logits_online_critic,
+        logits_=logits_target_critic,
         actions=actions,
         rewards=rewards,
         sequence_length=sequence_length)
@@ -329,9 +337,9 @@ def soft_q_loss_with_sparse_rewards_3_3_reversed(
         quantities_to_log_3, prefix="0/")
 
     if coefficient is not None:
-        raw_losses_3_r, quantities_to_log_3_r = soft_q_loss_with_sparse_rewards_3(
-            logits=logits_,
-            logits_=logits,
+        raw_losses_3_r, quantities_to_log_3_r = sac_critic_loss_with_sparse_rewards_3(
+            logits=logits_target_critic,
+            logits_=logits_online_critic,
             actions=actions,
             rewards=rewards,
             sequence_length=sequence_length)
@@ -354,26 +362,26 @@ def soft_q_loss_with_sparse_rewards_3_3_reversed(
     return raw_losses, quantities_to_log
 
 
-def soft_q_loss_with_sparse_rewards_2_2_reversed_3_3_reversed(
-        logits: torch.Tensor,
-        logits_: torch.Tensor,
+def sac_critic_loss_with_sparse_rewards_2_2_reversed_3_3_reversed(
+        logits_online_critic: torch.Tensor,
+        logits_target_critic: torch.Tensor,
         actions: torch.LongTensor,
         rewards: torch.Tensor,
         sequence_length: torch.LongTensor,
         coefficient: Optional[float] = None,
 ) -> Tuple[torch.Tensor, Dict[str, Any]]:
 
-    raw_losses_2, quantities_to_log_2 = soft_q_loss_with_sparse_rewards_2_2_reversed(
-        logits=logits,
-        logits_=logits_,
+    raw_losses_2, quantities_to_log_2 = sac_critic_loss_with_sparse_rewards_2_2_reversed(
+        logits=logits_online_critic,
+        logits_=logits_target_critic,
         actions=actions,
         rewards=rewards,
         sequence_length=sequence_length,
         coefficient=coefficient)
 
-    raw_losses_3, quantities_to_log_3 = soft_q_loss_with_sparse_rewards_3_3_reversed(
-        logits=logits,
-        logits_=logits_,
+    raw_losses_3, quantities_to_log_3 = sac_critic_loss_with_sparse_rewards_3_3_reversed(
+        logits=logits_online_critic,
+        logits_=logits_target_critic,
         actions=actions,
         rewards=rewards,
         sequence_length=sequence_length,
@@ -394,19 +402,31 @@ def soft_q_loss_with_sparse_rewards_2_2_reversed_3_3_reversed(
     return raw_losses, quantities_to_log
 
 
-def soft_q_loss_with_sparse_rewards_0(
+def sac_policy_loss(
         logits: torch.Tensor,
-        logits_: torch.Tensor,
-        actions: torch.LongTensor,
-        rewards: torch.Tensor,
-        sequence_length: torch.LongTensor,
-) -> Tuple[torch.Tensor, Dict[str, Any]]:
-    V = logits.logsumexp(dim=-1)
-    V_ = logits_.logsumexp(dim=-1)
-    raw_losses = F.mse_loss(V, V_, reduction="none")
-    quantities_to_log = {
-        "V": V,
-        "V_": V_,
-    }
+        logits_online_critic: torch.Tensor,
+        alpha: torch.Tensor
+) -> torch.Tensor:
 
-    return raw_losses, quantities_to_log
+    logits_online_critic = logits_online_critic.detach()
+
+    probs = F.softmax(logits, -1) + 1e-8
+    entropy = - probs * torch.log(probs)
+    entropy = torch.sum(entropy, dim=-1, keepdim=True) # (B, L, 1)
+    q = torch.sum(probs * logits_online_critic, dim=-1, keepdim=True)
+
+    entropy = entropy.squeeze(-1) # (B, L)
+    q = q.squeeze(-1) # (B, L)
+
+    policy_losses = - q - alpha * entropy
+    return policy_losses, entropy.detach()
+    
+
+def sac_entropy_loss(
+        log_alpha: torch.Tensor,
+        entropy: torch.Tensor,
+        target_entropy: torch.Tensor
+) -> torch.Tensor:
+    
+    entropy_losses = -log_alpha * (target_entropy - entropy)
+    return entropy_losses
