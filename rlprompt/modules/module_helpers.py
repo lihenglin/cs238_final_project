@@ -57,7 +57,7 @@ class SQLModuleConfig:
 
 @dataclass
 class SACModuleConfig:
-    sql_loss_impl: str = "v2_v2r_v3_v3r"
+    sac_loss_impl: str = "v2_v2r_v3_v3r"
     target_entropy_ratio: float = 0.98
     forward_mode: str = "onpolicy"
     # Target model setting
