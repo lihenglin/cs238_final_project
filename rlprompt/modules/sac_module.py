@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 import copy
 from typing import Optional, List, Dict, Any, Union, Tuple
 
@@ -46,8 +47,9 @@ class SACModule(BaseModule):
             self._target_critic = copy.deepcopy(self._online_critic)
         else:
             self._target_critic = target_critic_model
-        self.log_alpha = torch.zeros(1, requires_grad=True, device=next(self._actor.parameters()).device)
-        self.target_entropy = -torch.log(torch.tensor(1.0 / 50257)) * target_entropy_ratio # 50257 is the vocabulary sizes of GPT2 family
+        self._log_alpha = nn.Parameter(torch.zeros(1, device=next(self._actor.parameters()).device))
+        self._model = nn.ModuleList([self._actor, self._online_critic, self._log_alph])
+        self._target_entropy = -torch.log(torch.tensor(1.0 / 50257)) * target_entropy_ratio # 50257 is the vocabulary sizes of GPT2 family
         self._reward = reward
 
         self._sac_loss_impl = sac_loss_impl
@@ -131,8 +133,8 @@ class SACModule(BaseModule):
             sampled_actions=None,
             rewards=shaped_rewards, # (B, 1)
             sequence_length=sequence_lengths,
-            log_alpha=self.log_alpha,
-            target_entropy=self.target_entropy)
+            log_alpha=self._log_alpha,
+            target_entropy=self._target_entropy)
 
         utils.add_prefix_to_dict_keys_inplace(
             rewards_log, prefix=f"{mode.value}/rewards/")
