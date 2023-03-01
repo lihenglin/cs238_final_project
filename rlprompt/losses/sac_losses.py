@@ -82,8 +82,8 @@ def sac_loss_with_sparse_rewards(
             f"`logits_target_q.shape` = {logits_target_critic.shape}")
 
     raw_critic_losses, quantities_to_log = _sac_critic_loss_func(
-        logits_online_q=logits_online_critic,
-        logits_target_q=logits_target_critic,
+        logits_online_critic=logits_online_critic,
+        logits_target_critic=logits_target_critic,
         actions=actions,
         rewards=rewards,
         sequence_length=sequence_length
@@ -267,8 +267,8 @@ def sac_critic_loss_with_sparse_rewards_2_2_reversed(
 ) -> Tuple[torch.Tensor, Dict[str, Any]]:
 
     raw_losses_2, quantities_to_log_2 = sac_critic_loss_with_sparse_rewards_2(
-        logits=logits_online_critic,
-        logits_=logits_target_critic,
+        logits_online_critic=logits_online_critic,
+        logits_target_critic=logits_target_critic,
         actions=actions,
         rewards=rewards,
         sequence_length=sequence_length)
@@ -278,8 +278,8 @@ def sac_critic_loss_with_sparse_rewards_2_2_reversed(
 
     if coefficient is not None:
         raw_losses_2_r, quantities_to_log_2_r = sac_critic_loss_with_sparse_rewards_2(
-            logits=logits_target_critic,
-            logits_=logits_online_critic,
+            logits_online_critic=logits_target_critic,
+            logits_target_critic=logits_online_critic,
             actions=actions,
             rewards=rewards,
             sequence_length=sequence_length)
@@ -327,8 +327,8 @@ def sac_critic_loss_with_sparse_rewards_3_3_reversed(
 ) -> Tuple[torch.Tensor, Dict[str, Any]]:
 
     raw_losses_3, quantities_to_log_3 = sac_critic_loss_with_sparse_rewards_3(
-        logits=logits_online_critic,
-        logits_=logits_target_critic,
+        logits_online_critic=logits_online_critic,
+        logits_target_critic=logits_target_critic,
         actions=actions,
         rewards=rewards,
         sequence_length=sequence_length)
@@ -338,8 +338,8 @@ def sac_critic_loss_with_sparse_rewards_3_3_reversed(
 
     if coefficient is not None:
         raw_losses_3_r, quantities_to_log_3_r = sac_critic_loss_with_sparse_rewards_3(
-            logits=logits_target_critic,
-            logits_=logits_online_critic,
+            logits_online_critic=logits_target_critic,
+            logits_target_critic=logits_online_critic,
             actions=actions,
             rewards=rewards,
             sequence_length=sequence_length)
@@ -372,16 +372,16 @@ def sac_critic_loss_with_sparse_rewards_2_2_reversed_3_3_reversed(
 ) -> Tuple[torch.Tensor, Dict[str, Any]]:
 
     raw_losses_2, quantities_to_log_2 = sac_critic_loss_with_sparse_rewards_2_2_reversed(
-        logits=logits_online_critic,
-        logits_=logits_target_critic,
+        logits_online_critic=logits_online_critic,
+        logits_target_critic=logits_target_critic,
         actions=actions,
         rewards=rewards,
         sequence_length=sequence_length,
         coefficient=coefficient)
 
     raw_losses_3, quantities_to_log_3 = sac_critic_loss_with_sparse_rewards_3_3_reversed(
-        logits=logits_online_critic,
-        logits_=logits_target_critic,
+        logits_online_critic=logits_online_critic,
+        logits_target_critic=logits_target_critic,
         actions=actions,
         rewards=rewards,
         sequence_length=sequence_length,

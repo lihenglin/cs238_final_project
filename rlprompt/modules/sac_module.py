@@ -136,15 +136,15 @@ class SACModule(BaseModule):
             target_entropy=self._target_entropy)
 
         utils.add_prefix_to_dict_keys_inplace(
-            rewards_log, prefix=f"{mode.value}/rewards/")
+            rewards_log, prefix=f"{mode}/rewards/")
         utils.add_prefix_to_dict_keys_inplace(
-            sac_loss_log, prefix=f"{mode.value}/")
+            sac_loss_log, prefix=f"{mode}/")
         sac_loss_log = utils.unionize_dicts([
             rewards_log,
             sac_loss_log,
             {
-                f"{mode.value}/rewards/raw": raw_rewards.mean(),
-                f"{mode.value}/rewards/shaped": shaped_rewards.mean(),
+                f"{mode}/rewards/raw": raw_rewards.mean(),
+                f"{mode}/rewards/shaped": shaped_rewards.mean(),
             },
         ])
 
@@ -197,8 +197,8 @@ class SACModule(BaseModule):
         outputs_target_critic = self._target_critic.teacher_forcing(**batch_)
 
         return (outputs['sample_logits'].contiguous(),
-                outputs_online_critic['sample_logits'].contiguouts(),
-                outputs_target_critic['sample_logits'].contiguouts(),
+                outputs_online_critic['sample_logits'].contiguous(),
+                outputs_target_critic['sample_logits'].contiguous(),
                 outputs['sample_tokens'],
                 outputs['sample_ids'].contiguous(),
                 outputs['sample_lengths'].contiguous())

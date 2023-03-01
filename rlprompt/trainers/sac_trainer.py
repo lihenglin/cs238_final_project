@@ -73,7 +73,7 @@ class SACTrainer(Trainer):
         self.train_op = get_multi_modules_train_op([
                                                     self.module._actor.parameters(),
                                                     self.module._online_critic.parameters(),
-                                                    self._log_alpha
+                                                    [self.module._log_alpha]
                                                    ],
                                                    learning_rate,
                                                    gradient_clip,
