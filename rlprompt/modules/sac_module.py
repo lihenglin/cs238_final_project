@@ -110,7 +110,7 @@ class SACModule(BaseModule):
         mode: str,
         batch: Dict[str, Any]
     ) -> Tuple[torch.Tensor, Dict]:
-        if mode != "onpolicy":
+        if mode != "SAC_ON":
             # TODO: Enable training modes other than on-policy
             raise NotImplementedError('Only on-policy sampling is supported now')
 

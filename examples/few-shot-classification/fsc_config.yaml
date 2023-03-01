@@ -25,4 +25,5 @@ train_shuffle: false
 eval_steps: 10
 save_steps: 100
 learning_rate: 5e-5
-random_seed: null
+random_seed: 213
+project_name: "cs238"

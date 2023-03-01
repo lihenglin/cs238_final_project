@@ -59,7 +59,7 @@ class SQLModuleConfig:
 class SACModuleConfig:
     sac_loss_impl: str = "v2_v2r_v3_v3r"
     target_entropy_ratio: float = 0.98
-    forward_mode: str = "onpolicy"
+    forward_mode: str = "SAC_ON"
     # Target model setting
     target_update_method: str = "polyak"
     target_update_steps: Optional[int] = None
