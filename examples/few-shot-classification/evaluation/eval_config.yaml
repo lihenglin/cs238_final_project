@@ -2,9 +2,9 @@
 # Data
 num_shots: 16
 base_path: "../data"
-dataset: "???"
+dataset: "sst-2"
 dataset_seed: 0
 # Reward
-task_lm: "roberta-large"
+task_lm: "distilgpt2"
 is_mask_lm: null
 prompt: "???"

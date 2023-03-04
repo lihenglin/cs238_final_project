@@ -57,9 +57,7 @@ def sac_loss_with_sparse_rewards(
     if implementation == "v2_v2r":
         _sac_critic_loss_func = partial(
             sac_critic_loss_with_sparse_rewards_2_2_reversed,
-            coefficient=coefficient,
-            margin_constant=margin_constant,
-            margin_coefficient=margin_coefficient)
+            coefficient=coefficient)
 
     if implementation == "v3_v3r":
         _sac_critic_loss_func = partial(
@@ -74,12 +72,12 @@ def sac_loss_with_sparse_rewards(
     if logits.shape != logits_online_critic.shape:
         raise ValueError(
             f"`logits.shape` = {logits.shape}, but "
-            f"`logits_online_q.shape` = {logits_online_critic.shape}")
+            f"`logits_online_critic.shape` = {logits_online_critic.shape}")
 
     if logits.shape != logits_target_critic.shape:
         raise ValueError(
             f"`logits.shape` = {logits.shape}, but "
-            f"`logits_target_q.shape` = {logits_target_critic.shape}")
+            f"`logits_target_critic.shape` = {logits_target_critic.shape}")
 
     raw_critic_losses, quantities_to_log = _sac_critic_loss_func(
         logits_online_critic=logits_online_critic,
@@ -88,25 +86,39 @@ def sac_loss_with_sparse_rewards(
         rewards=rewards,
         sequence_length=sequence_length
     )
+    critic_loss = loss_utils.mask_and_reduce(
+        sequence=raw_critic_losses,
+        sequence_length=sequence_length
+    )
     raw_policy_losses, entropy = sac_policy_loss(
         logits=logits,
         logits_online_critic=logits_online_critic,
         alpha=log_alpha.exp()
     )
+    quantities_to_log["entropy"] = entropy
+    policy_loss = loss_utils.mask_and_reduce(
+        sequence=raw_policy_losses,
+        sequence_length=sequence_length
+    )
     raw_entropy_losses = sac_entropy_loss(
-        log_alpha,
-        entropy,
-        target_entropy
+        log_alpha=log_alpha,
+        entropy=entropy,
+        target_entropy=target_entropy
+    )
+    entropy_loss = loss_utils.mask_and_reduce(
+        sequence=raw_entropy_losses,
+        sequence_length=sequence_length
     )
 
-    loss = loss_utils.mask_and_reduce(
-        sequence=raw_critic_losses + raw_policy_losses + raw_entropy_losses,
-        sequence_length=sequence_length)
+    loss = critic_loss + policy_loss + entropy_loss
     loss_log = {
         "loss": loss,
+        "critic_loss": critic_loss,
+        "policy_loss": policy_loss,
+        "entropy_loss": entropy_loss,
         "sequence_length": sequence_length.float().mean(),
         "loss-normalized": loss_utils.mask_and_reduce(
-            sequence=raw_critic_losses,
+            sequence=raw_critic_losses + raw_policy_losses + raw_entropy_losses,
             sequence_length=sequence_length,
             average_across_timesteps=True,
             sum_over_timesteps=False),
@@ -202,9 +214,7 @@ def sac_critic_loss_with_sparse_rewards_2(
         "A": A,
         "Q_": Q_,
         "V_": V_,
-        "A_": A_,
-        "H": loss_utils._get_entropy(logits_online_critic),
-        "H_": loss_utils._get_entropy(logits_target_critic),
+        "A_": A_
     }
 
     return raw_losses, quantities_to_log
@@ -262,8 +272,6 @@ def sac_critic_loss_with_sparse_rewards_2_2_reversed(
         rewards: torch.Tensor,
         sequence_length: torch.LongTensor,
         coefficient: Optional[float] = None,
-        margin_constant: Optional[float] = None,
-        margin_coefficient: Optional[float] = None,
 ) -> Tuple[torch.Tensor, Dict[str, Any]]:
 
     raw_losses_2, quantities_to_log_2 = sac_critic_loss_with_sparse_rewards_2(
@@ -295,24 +303,9 @@ def sac_critic_loss_with_sparse_rewards_2_2_reversed(
             quantities_to_log_2,
             quantities_to_log_2_r,
         ])
-
     else:
         raw_losses = raw_losses_2
         quantities_to_log = quantities_to_log_2
-
-    if margin_constant is not None and margin_coefficient is not None:
-        raw_losses_margin, quantities_to_log_margin = large_margin_classification_loss(
-            logits=logits,
-            expert_actions=actions,
-            margin_constant=margin_constant)
-
-        raw_losses = raw_losses + margin_coefficient * raw_losses_margin
-        utils.add_prefix_to_dict_keys_inplace(
-            quantities_to_log_margin, prefix="margin/")
-        quantities_to_log = utils.unionize_dicts([
-            quantities_to_log,
-            quantities_to_log_margin,
-        ])
 
     return raw_losses, quantities_to_log
 
@@ -418,7 +411,7 @@ def sac_policy_loss(
     entropy = entropy.squeeze(-1) # (B, L)
     q = q.squeeze(-1) # (B, L)
 
-    policy_losses = - q - alpha * entropy
+    policy_losses = - q - alpha.detach() * entropy
     return policy_losses, entropy.detach()
     
 
@@ -427,6 +420,7 @@ def sac_entropy_loss(
         entropy: torch.Tensor,
         target_entropy: torch.Tensor
 ) -> torch.Tensor:
+    assert not entropy.requires_grad
     
     entropy_losses = -log_alpha * (target_entropy - entropy)
     return entropy_losses
