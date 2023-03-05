@@ -21,7 +21,7 @@ class PromptedClassificationEvaluator:
         num_classes: int,
         verbalizers: List[str],
         template: Optional[str],
-        prompt: str
+        prompts: List[str]
     ):
         super().__init__()
         self.device = torch.device("cuda" if torch.cuda.is_available()
@@ -58,7 +58,7 @@ class PromptedClassificationEvaluator:
         else:
             self.template = template
 
-        self.prompt = prompt
+        self.prompts = prompts
 
     # Adapted from
     # https://huggingface.co/docs/transformers/v4.21.1/en/task_summary#masked-language-modeling
@@ -116,19 +116,23 @@ class PromptedClassificationEvaluator:
     ) -> float:
         num_of_examples = dataloader.dataset.__len__()
         correct_sum = 0
-        for i, batch in enumerate(dataloader):
-            inputs = batch['source_texts']  # List
-            targets = batch['class_labels']  # Tensor
-            batch_size = targets.size(0)
-            current_prompts = [self.prompt for _ in range(batch_size)]
-            formatted_templates = self._format_prompts(current_prompts, inputs)
-            all_logits = self._get_logits(formatted_templates)
-            class_probs = torch.softmax(all_logits[:, self.verbalizer_ids], -1)
-            # Get labels
-            predicted_labels = torch.argmax(class_probs, dim=-1)
-            label_agreement = torch.where(
-                targets.cuda() == predicted_labels, 1, 0)
-            # Compute accuracy
-            correct_sum += label_agreement.sum()
-        accuracy = correct_sum/num_of_examples
-        return accuracy
+        for prompt in self.prompts:
+            avg_acc = 0.
+            for i, batch in enumerate(dataloader):
+                inputs = batch['source_texts']  # List
+                targets = batch['class_labels']  # Tensor
+                batch_size = targets.size(0)
+                current_prompts = [prompt for _ in range(batch_size)]
+                formatted_templates = self._format_prompts(current_prompts, inputs)
+                all_logits = self._get_logits(formatted_templates)
+                class_probs = torch.softmax(all_logits[:, self.verbalizer_ids], -1)
+                # Get labels
+                predicted_labels = torch.argmax(class_probs, dim=-1)
+                label_agreement = torch.where(
+                    targets.cuda() == predicted_labels, 1, 0)
+                # Compute accuracy
+                correct_sum += label_agreement.sum()
+            accuracy = correct_sum/num_of_examples
+            avg_acc += accuracy
+        avg_acc /= len(self.prompts)
+        return avg_acc
