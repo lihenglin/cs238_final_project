@@ -8,7 +8,7 @@ base_path: "./data"
 dataset: "sst-2"
 dataset_seed: 0
 # Reward
-task_lm: "distilgpt2"
+task_lm: "roberta-base"
 # Single Prompt Model
 prompt_length: 5
 prompt_train_batch_size: 16
@@ -23,7 +23,7 @@ top_k: 256
 max_train_steps: 12000
 train_shuffle: false
 eval_steps: 10
-save_steps: 100
+save_steps: 3000
 learning_rate: 5e-5
 random_seed: 213
 project_name: "cs238"

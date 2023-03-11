@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional
-from rlprompt.models import BaseModel, LMAdaptorModel, SinglePromptModel
+from rlprompt.models import BaseModel, LMAdaptorModel, DuelingLMAdaptorModel, SinglePromptModel
 
 def make_lm_adaptor_model(config: "DictConfig") -> LMAdaptorModel:
     return LMAdaptorModel(config.policy_lm,
@@ -10,6 +10,16 @@ def make_lm_adaptor_model(config: "DictConfig") -> LMAdaptorModel:
                           config.fluent_top_k,
                           config.max_decoding_length,
                           config.eos_token_id)
+
+
+def make_dueling_lm_adaptor_model(config: "DictConfig") -> DuelingLMAdaptorModel:
+    return DuelingLMAdaptorModel(config.policy_lm,
+                                 config.hidden_size,
+                                 config.logit_bias,
+                                 config.fluent,
+                                 config.fluent_top_k,
+                                 config.max_decoding_length,
+                                 config.eos_token_id)
 
 
 def make_single_prompt_model(model: BaseModel,

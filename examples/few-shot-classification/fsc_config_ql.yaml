@@ -27,4 +27,4 @@ save_steps: 3000
 learning_rate: 5e-5
 random_seed: 213
 project_name: "cs238"
-run_name: "SAC"
+run_name: "QL"
